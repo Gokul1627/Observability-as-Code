@@ -1,0 +1,63 @@
+alloy:
+  clustering:
+    enabled: false
+  extraPorts:
+  - name: "otelgrpc"
+    port: 4320
+    targetPort: 4320
+    protocol: "TCP"
+  configMap:
+    content: |-
+      logging {
+        level = "info"
+        format = "logfmt"
+      }
+
+      otelcol.receiver.otlp "default" {
+        grpc {
+          endpoint = "0.0.0.0:4320"
+        }
+
+        output {
+          metrics  = [otelcol.processor.batch.default.input]
+          traces  = [otelcol.processor.batch.default.input]
+          logs = [otelcol.processor.batch.default.input]
+        }
+      }
+
+
+      otelcol.processor.batch "default" {
+        output {
+          metrics = [otelcol.exporter.prometheus.prometheus.input]
+          traces = [otelcol.exporter.otlp.tempo.input]
+          logs = [otelcol.exporter.loki.default.input]
+        }
+      }
+      otelcol.exporter.loki "default" {
+        forward_to = [loki.write.local.receiver]
+      }
+
+      loki.write "local" {
+        endpoint {
+          url = "http://loki-loki-distributed-gateway.default.svc.cluster.local/loki/api/v1/push"
+        }
+      }
+      otelcol.exporter.otlp "tempo" {
+          client {
+              endpoint = "tempo:4317"
+              tls {
+                  insecure             = true
+                  insecure_skip_verify = true
+              }
+          }
+      }
+
+      otelcol.exporter.prometheus "prometheus" {
+        forward_to = [prometheus.remote_write.default.receiver]
+      }
+
+      prometheus.remote_write "default" {
+        endpoint {
+          url = "http://prometheus-server.default.svc.cluster.local/api/v1/write"
+        }
+      }
